@@ -267,6 +267,12 @@ func (s *size) push(sz int) {
 	}
 }
 
+// children[i] is splited.
+func (s *size) split(index, nextSize int) {
+	s.insertAt(index+1, -1)
+	(*s)[index] -= 1 + nextSize
+}
+
 // children[i] and children[i+1] is merged
 func (s *size) merge(index int) {
 	for i := index; i < len(*s)-1; i++ {
@@ -404,8 +410,7 @@ func (n *node) maybeSplitChild(i, maxItems int) bool {
 	item, second := first.split(maxItems / 2)
 	n.items.insertAt(i, item)
 	n.children.insertAt(i+1, second)
-	n.size.insertAt(i+1, 0)
-	n.size[i] -= second.length()
+	n.size.split(i, second.length())
 	return true
 }
 
@@ -608,9 +613,12 @@ func (n *node) growChildAndRemove(i int, item Item, minItems int, typ toRemove) 
 		stolenItem := stealFrom.items.pop()
 		child.items.insertAt(0, n.items[i-1])
 		n.items[i-1] = stolenItem
+		n.size[i-1] -= 1
 		if len(stealFrom.children) > 0 {
 			child.children.insertAt(0, stealFrom.children.pop())
-			child.size.insertAt(0, stealFrom.size.pop())
+			stealSize := stealFrom.size.pop()
+			n.size[i-1] -= stealSize
+			child.size.insertAt(0, stealSize)
 		}
 	} else if i < len(n.items) && len(n.children[i+1].items) > minItems {
 		// steal from right child
@@ -619,9 +627,12 @@ func (n *node) growChildAndRemove(i int, item Item, minItems int, typ toRemove) 
 		stolenItem := stealFrom.items.removeAt(0)
 		child.items = append(child.items, n.items[i])
 		n.items[i] = stolenItem
+		n.size[i] += 1
 		if len(stealFrom.children) > 0 {
 			child.children = append(child.children, stealFrom.children.removeAt(0))
-			child.size.push(stealFrom.size.removeAt(0))
+			stealSize := stealFrom.size.removeAt(0)
+			n.size[i] += stealSize
+			child.size.push(stealSize)
 		}
 	} else {
 		if i >= len(n.items) {
@@ -727,7 +738,7 @@ func (n *node) iterate(dir direction, start, stop Item, includeStart bool, hit b
 
 // Used for testing/debugging purposes.
 func (n *node) print(w io.Writer, level int) {
-	fmt.Fprintf(w, "%sNODE:%v\n", strings.Repeat("  ", level), n.items)
+	fmt.Fprintf(w, "%sNODE:%v, %v\n", strings.Repeat("  ", level), n.items, n.size)
 	for _, c := range n.children {
 		c.print(w, level+1)
 	}
